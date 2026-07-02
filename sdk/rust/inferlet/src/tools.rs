@@ -70,6 +70,15 @@ pub fn answer_prefix(model: &Model, name: &str, value: &str) -> Vec<u32> {
     tool_use::answer(model, name, value)
 }
 
+/// Render one assistant turn's tool calls as the text this model's chat
+/// template would produce for replay: `calls` is `(name, arguments_json)`
+/// pairs. Feed the result into [`crate::chat::assistant`] — this is text
+/// to be tokenized together with the turn's prose, not a raw token splice
+/// like [`answer_prefix`].
+pub fn render_tool_calls(model: &Model, calls: &[(String, String)]) -> String {
+    tool_use::render_tool_calls(model, calls)
+}
+
 // =============================================================================
 // Native grammar / matcher
 // =============================================================================

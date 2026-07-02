@@ -543,6 +543,15 @@ const ARCH_PROFILES: &[(&[&str], ArchProfile)] = &[
         },
     ),
     (
+        // OLMo-2 / OLMo-3: `bind_olmo3` reads q_proj/k_proj/v_proj and
+        // gate_proj/up_proj directly (`must()`), it never consults the fused
+        // `.fused.weight` views, so the generic dense-projection join must be
+        // skipped or it consumes the source tensors and leaves bind_olmo3
+        // with a `missing weight 'self_attn.q_proj.weight'` error.
+        &["olmo2", "olmo3"],
+        ArchProfile { skip_dense_qkv_fusion: true, ..GENERIC_ARCH },
+    ),
+    (
         &["qwen3", "qwen2", "llama", "llama3", "mistral", "qwen3_5", "qwen3_5_text"],
         ArchProfile { bf16_runtime_quant: true, ..GENERIC_ARCH },
     ),

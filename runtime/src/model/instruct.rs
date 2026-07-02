@@ -102,6 +102,27 @@ pub trait Instruct: Send + Sync {
     fn seal(&self) -> Vec<u32>;
     fn equip(&self, tools: &[String]) -> Vec<u32>;
     fn answer(&self, name: &str, value: &str) -> Vec<u32>;
+
+    /// Render one assistant turn's tool calls as replay text for this
+    /// architecture's chat template, given (name, arguments-json) pairs.
+    /// Default reproduces the Hermes/Qwen-style wire format
+    /// (`<tool_call>\n{"name":...,"arguments":...}\n</tool_call>`, one per
+    /// call, newline-joined) that most chat-apc-supported archs share.
+    fn render_tool_calls(&self, calls: &[(String, String)]) -> String {
+        calls
+            .iter()
+            .map(|(name, arguments_json)| {
+                let arguments: serde_json::Value = serde_json::from_str(arguments_json)
+                    .unwrap_or_else(|_| serde_json::Value::String(arguments_json.clone()));
+                format!(
+                    "<tool_call>\n{}\n</tool_call>",
+                    serde_json::json!({ "name": name, "arguments": arguments })
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     fn chat_decoder(&self) -> Box<dyn ChatDecoder>;
     fn reasoning_decoder(&self) -> Box<dyn ReasoningDecoder>;
     fn tool_decoder(&self) -> Box<dyn ToolDecoder>;
@@ -193,5 +214,37 @@ pub fn create(arch_name: &str, tokenizer: Arc<Tokenizer>) -> Arc<dyn Instruct> {
                 stop_tokens: &["<|im_end|>", "<|endoftext|>"],
             },
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `render_tool_calls`'s default body reproduces the Hermes/Qwen-style
+    /// wire format chat-apc previously hardcoded directly (before it was
+    /// made model-aware). `Olmo2Instruct` doesn't override this method, so
+    /// it exercises the trait default. This replaces the coverage the
+    /// now-deleted chat-apc test `assistant_tool_calls_replay_as_native_tool_call_payload`
+    /// provided — that test called the concrete renderer with no model
+    /// seam, which stopped being possible once rendering required a live
+    /// `&Model` (see `RatioThink/Inferlets/chat-apc/src/chat/completions.rs`).
+    #[test]
+    fn render_tool_calls_default_matches_hermes_format() {
+        use crate::model::instruct::olmo2::Olmo2Instruct;
+        use crate::model::tokenizer::Tokenizer;
+        use std::sync::Arc;
+
+        let tok = Arc::new(Tokenizer::from_vocab(&["<|endoftext|>".to_string()]));
+        let inst = Olmo2Instruct::new(tok);
+        let calls = vec![("calculator".to_string(), r#"{"expr":"2+2"}"#.to_string())];
+        let rendered = inst.render_tool_calls(&calls);
+        assert!(rendered.contains("<tool_call>"), "{rendered}");
+        assert!(rendered.contains("</tool_call>"), "{rendered}");
+        assert!(rendered.contains("\"name\":\"calculator\""), "{rendered}");
+        assert!(
+            rendered.contains("\"arguments\":{\"expr\":\"2+2\"}"),
+            "{rendered}"
+        );
     }
 }

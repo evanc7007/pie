@@ -44,6 +44,15 @@ impl pie::instruct::tool_use::Host for InstanceState {
         Ok(model.model.instruct().answer(&name, &value))
     }
 
+    async fn render_tool_calls(
+        &mut self,
+        model: Resource<crate::api::model::Model>,
+        calls: Vec<(String, String)>,
+    ) -> Result<String> {
+        let model = self.ctx().table.get(&model)?;
+        Ok(model.model.instruct().render_tool_calls(&calls))
+    }
+
     async fn create_decoder(
         &mut self,
         model: Resource<crate::api::model::Model>,

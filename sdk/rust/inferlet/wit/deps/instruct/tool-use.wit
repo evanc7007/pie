@@ -16,6 +16,20 @@ interface tool-use {
     /// Provide a tool result (after a tool-call reply)
     answer: func(model: borrow<model>, name: string, value: string) -> list<u32>;
 
+    /// Render one assistant turn's tool calls (name, arguments-json pairs)
+    /// as the text this architecture's chat template would produce for
+    /// replaying them in history. The caller feeds the result into the
+    /// normal `assistant(...)` chat-templating path (tokenized together
+    /// with any surrounding prose), NOT spliced as raw tokens the way
+    /// `answer` is. Models with no native multi-call grouping semantics
+    /// (the ChatML/Hermes family) render each call independently and
+    /// join with "\n"; models that group all calls under one wrapper
+    /// (OLMo 3's `<function_calls>...</function_calls>`) do so here.
+    /// TODO(python-bindings): Python/JS guest bindings are not regenerated
+    /// by this change (Rust-only consumer today); run
+    /// sdk/python/scripts/generate_bindings.py if Python parity is needed.
+    render-tool-calls: func(model: borrow<model>, calls: list<tuple<string, string>>) -> string;
+
     /// Create a decoder to detect tool calls in generated tokens
     create-decoder: func(model: borrow<model>) -> decoder;
 
