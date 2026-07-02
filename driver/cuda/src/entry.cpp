@@ -1466,11 +1466,9 @@ extern "C" int pie_driver_cuda_run_inproc(int argc,
                         &vtable);
     } catch (const std::exception& e) {
         std::cerr << "[pie-driver-cuda] fatal: " << e.what() << "\n";
-        if (fatal_cb) fatal_cb(e.what(), fatal_ctx);
         return -1;
     } catch (...) {
         std::cerr << "[pie-driver-cuda] fatal: unknown exception\n";
-        if (fatal_cb) fatal_cb("unknown exception", fatal_ctx);
         return -1;
     }
 }
