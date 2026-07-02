@@ -100,6 +100,7 @@ class FakeContext:
         self._cursor: int = 0
         self._committed_pages: int = 0
         self._tokens_per_page_val: int = 64
+        self._bid: float = 0.0
 
     @classmethod
     def create(cls, model):
@@ -151,6 +152,139 @@ class FakeContext:
 
     def truncate_working_page_tokens(self, num_tokens):
         self._cursor = max(0, self._cursor - num_tokens)
+
+    def bid(self, value):
+        self._bid = value
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+
+class FakeImage:
+    def __init__(self, token_count=4, prefix=None, suffix=None):
+        self._token_count = token_count
+        self._prefix = [10] if prefix is None else list(prefix)
+        self._suffix = [11] if suffix is None else list(suffix)
+
+    @classmethod
+    def from_bytes(cls, model, data):
+        return cls(token_count=max(1, min(len(data), 8)))
+
+    def token_count(self):
+        return self._token_count
+
+    def position_span(self):
+        return self._token_count
+
+    def grid(self):
+        return (1, 1, self._token_count)
+
+    def prefix_tokens(self):
+        return list(self._prefix)
+
+    def suffix_tokens(self):
+        return list(self._suffix)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+
+class FakeVideo:
+    def __init__(self, frames=None):
+        self._frames = frames or [FakeImage(token_count=2, prefix=[], suffix=[])]
+
+    @classmethod
+    def from_bytes(cls, model, data, max_frames):
+        n = max(0, min(int(max_frames), 2))
+        return cls([FakeImage(token_count=2, prefix=[], suffix=[]) for _ in range(n)])
+
+    def frame_count(self):
+        return len(self._frames)
+
+    def frame(self, index):
+        return self._frames[index]
+
+    def timestamp(self, index):
+        return float(index * 10)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+
+class FakeAudio:
+    def __init__(self, token_count=6, prefix=None, suffix=None):
+        self._token_count = token_count
+        self._prefix = [20] if prefix is None else list(prefix)
+        self._suffix = [21] if suffix is None else list(suffix)
+
+    @classmethod
+    def from_bytes(cls, model, data):
+        return cls(token_count=max(1, min(len(data), 8)))
+
+    def token_count(self):
+        return self._token_count
+
+    def position_span(self):
+        return self._token_count
+
+    def prefix_tokens(self):
+        return list(self._prefix)
+
+    def suffix_tokens(self):
+        return list(self._suffix)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+
+@dataclass
+class Voice_Speaker:
+    value: int
+
+
+@dataclass
+class Voice_Named:
+    value: str
+
+
+@dataclass
+class SpeechRequest:
+    text: str
+    voice: object
+    max_duration_ms: Optional[int]
+
+
+class FakeSpeech:
+    def __init__(self, req=None):
+        self.req = req
+
+    @classmethod
+    def generate(cls, model, req):
+        return cls(req)
+
+    def sample_rate(self):
+        return 24_000
+
+    def channels(self):
+        return 1
+
+    def duration_ms(self):
+        return 80
+
+    def pcm(self):
+        return [0.0, 0.5, -0.5]
 
     def __enter__(self):
         return self
@@ -240,9 +374,13 @@ class FakeForwardPass:
 
     def __init__(self, model):
         self._model = model
+        self.images = []
+        self.audios = []
 
     def context(self, ctx): pass
     def input_tokens(self, tokens, positions): pass
+    def input_image(self, image, anchor): self.images.append((image, anchor))
+    def input_audio(self, audio, anchor): self.audios.append((audio, anchor))
     def input_speculative_tokens(self, tokens, positions): pass
     def output_speculative_tokens(self, flag): pass
     def attention_mask(self, mask): pass
@@ -444,6 +582,20 @@ def _build_mock_modules():
     context_mod = types.ModuleType("wit_world.imports.context")
     context_mod.Context = FakeContext
 
+    # media
+    media_mod = types.ModuleType("wit_world.imports.media")
+    media_mod.Image = FakeImage
+    media_mod.Video = FakeVideo
+    media_mod.Audio = FakeAudio
+
+    # audio_out
+    audio_out_mod = types.ModuleType("wit_world.imports.audio_out")
+    audio_out_mod.Voice_Speaker = Voice_Speaker
+    audio_out_mod.Voice_Named = Voice_Named
+    audio_out_mod.Voice = Voice_Speaker | Voice_Named
+    audio_out_mod.SpeechRequest = SpeechRequest
+    audio_out_mod.Speech = FakeSpeech
+
     # inference
     inf_mod = types.ModuleType("wit_world.imports.inference")
     for cls in [
@@ -567,6 +719,8 @@ def _build_mock_modules():
         "wit_world.imports.pie_mcp_types": mcp_types,
         "wit_world.imports.model": model_mod,
         "wit_world.imports.context": context_mod,
+        "wit_world.imports.media": media_mod,
+        "wit_world.imports.audio_out": audio_out_mod,
         "wit_world.imports.inference": inf_mod,
         "wit_world.imports.chat": chat_mod,
         "wit_world.imports.reasoning": reasoning_mod,
@@ -585,7 +739,7 @@ def _build_mock_modules():
 
     for attr in [
         "poll", "pie_core_types", "pie_mcp_types", "model", "context",
-        "inference", "chat", "reasoning", "tool_use", "runtime",
+        "media", "audio_out", "inference", "chat", "reasoning", "tool_use", "runtime",
         "messaging", "session", "adapter", "client", "zo", "scheduling",
     ]:
         setattr(wit_imports, attr, sys.modules[f"wit_world.imports.{attr}"])
